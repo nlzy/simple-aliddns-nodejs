@@ -100,7 +100,11 @@ async function getIp() {
     const request = await get(config.ipAPI)
 
     try {
+        const ipv4RegExp = /^\d+\.\d+\.\d+\.\d+$/
         var data = JSON.parse(request).ip
+        if (typeof(data) !== 'string' || !ipv4RegExp.test(data)) {
+            throw new Error()
+        }
     } catch(e) {
         throw new Error(`(Error) Get IP fail. Can't parse server respone.`)
     }
