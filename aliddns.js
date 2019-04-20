@@ -14,44 +14,30 @@ const config = {
 }
 
 /**
- * Encode string for sign.
- * 
- * @param {string} str string to encode.
- * @returns {string} encoded sting.
- */
-function percentEncode(str) {
-    return encodeURIComponent(str).replace(/[!'()*]/g, function(c) {
-        return '%' + c.charCodeAt(0).toString(16);
-    })
-}
-
-/**
- * Make signature string from parames.
- * 
- * @param {object} parames parames to sign. with common parames.
- * @returns {string} signature.
- */
-function makeSignature(parames) {
-    const magicPrefix = 'GET&%2F&'
-
-    const canonicalizedQueryString = Object.keys(parames)
-        .sort()
-        .map(k => percentEncode(k) + '=' + percentEncode(parames[k]))
-        .join('&')
-
-    const data = magicPrefix + percentEncode(canonicalizedQueryString)
-    const key = config.accessKeySecret + '&'
-
-    return crypto.createHmac('sha1', key).update(data).digest('base64')
-}
-
-/**
  * Attach common parameters and signature to API specific parameters.
  * 
  * @param {object} specParam API specific parameters.
  * @returns {object} Parameters with signature and common parameters.
  */
 function attachParam(specParam) {
+    function percentEncode(str) {
+        return encodeURIComponent(str).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16))
+    }
+
+    function makeSignature(parames) {
+        const magicPrefix = 'GET&%2F&'
+    
+        const canonicalizedQueryString = Object.keys(parames)
+            .sort()
+            .map(k => percentEncode(k) + '=' + percentEncode(parames[k]))
+            .join('&')
+    
+        const data = magicPrefix + percentEncode(canonicalizedQueryString)
+        const key = config.accessKeySecret + '&'
+    
+        return crypto.createHmac('sha1', key).update(data).digest('base64')
+    }
+
     let parames = Object.assign({
         'Format':'JSON',
         'Version':'2015-01-09',
@@ -78,13 +64,13 @@ function get(url, args) {
     }
     return new Promise((resolve, reject) => {
         https.get(url, (resp) => {
-            let data = '';
+            let data = ''
             resp.on('data', (chunk) => {
-                data += chunk;
+                data += chunk
             })
             resp.on('end', () => {
                 resolve(data)
-            });
+            })
         }).on('error', (e) => {
             reject(new Error('(Error) HTTP request error. Code: ' + e.code))
         })
