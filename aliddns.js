@@ -11,7 +11,7 @@ const config = {
     accessKeyId: '',
     accessKeySecret: '',
 
-    mode: "both",
+    mode: 'both',
     interval: 0,
 
     alidnsAPI: 'https://alidns.aliyuncs.com/',
@@ -20,49 +20,12 @@ const config = {
 }
 
 /**
- * Attach common parameters and signature to API specific parameters.
+ * 原生 https.get 的简单包装
  * 
- * @param {object} specParam API specific parameters.
- * @returns {object} Parameters with signature and common parameters.
- */
-function attachParam(specParam) {
-    function percentEncode(str) {
-        return encodeURIComponent(str).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16))
-    }
-
-    function makeSignature(parames) {
-        const magicPrefix = 'GET&%2F&'
-    
-        const canonicalizedQueryString = Object.keys(parames)
-            .sort()
-            .map(k => percentEncode(k) + '=' + percentEncode(parames[k]))
-            .join('&')
-    
-        const data = magicPrefix + percentEncode(canonicalizedQueryString)
-        const key = config.accessKeySecret + '&'
-    
-        return crypto.createHmac('sha1', key).update(data).digest('base64')
-    }
-
-    let parames = Object.assign({
-        'Format':'JSON',
-        'Version':'2015-01-09',
-        'AccessKeyId':config.accessKeyId,
-        'SignatureMethod':'HMAC-SHA1',
-        'SignatureVersion':'1.0',
-        'SignatureNonce':crypto.randomBytes(16).toString('hex'),
-        'Timestamp':(new Date()).toISOString(),
-    }, specParam)
-    return Object.assign(parames, { 'Signature': makeSignature(parames) })
-}
-
-/**
- * A wrap of native https.get
- * 
- * @param {string} url HTTPS GET URL.
- * @param {object} params HTTPS GET args.
- * @param {object} options NodeJS request options.
- * @returns {Promise} HTTPS GET promise, resolve data, reject error.
+ * @param {string} url
+ * @param {object} params 请求参数.
+ * @param {object} options NodeJS request 选项.
+ * @returns {Promise} 成功 resolve 响应正文，失败 reject 错误对象
  */
 function get(url, params = {}, options = {}) {
     url = new URL(url)
@@ -91,6 +54,26 @@ function get(url, params = {}, options = {}) {
 }
 
 const { getIp4, getIp6 } = (function () {
+    const ipv4RegExp = /^((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])$/
+    const ipv6RegExp = new RegExp([
+        '^([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|',
+        '([0-9a-fA-F]{1,4}:){1,7}:|',
+        '([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|',
+        '([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|',
+        '([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|',
+        '([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|',
+        '([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|',
+        '[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|',
+        ':((:[0-9a-fA-F]{1,4}){1,7}|:)|',
+        'fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|',
+        '::(ffff(:0{1,4}){0,1}:){0,1}',
+        '((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}',
+        '(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|',
+        '([0-9a-fA-F]{1,4}:){1,4}:',
+        '((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}',
+        '(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])$'
+    ].join(''))
+    
     async function getIp(family, ipApi, regexp) {
         const request = await get(ipApi, undefined, { family: family })
 
@@ -105,40 +88,75 @@ const { getIp4, getIp6 } = (function () {
 
         return data
     }
+
     return {
-        getIp4: () => getIp(4, config.ip4Api, /^\d+\.\d+\.\d+\.\d+$/),
-        getIp6: () => getIp(6, config.ip6Api, /(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))/)
+        /**
+         * 获取公网 IPv4 地址
+         * @returns 成功则 resolve IP 字符串，失败则 reject 错误对象
+         */
+        getIp4: () => getIp(4, config.ip4Api, ipv4RegExp),
+        getIp6: () => getIp(6, config.ip6Api, ipv6RegExp)
     }
 })()
 
-const { getRecord4, getRecord6 } = (function () {
+const { getRecord4, getRecord6, addRecord4, addRecord6, updateRecord4, updateRecord6 } = (function () {
+    // 将公共参数和签名附加到请求参数
+    function attachParam(specParam) {
+        function percentEncode(str) {
+            return encodeURIComponent(str).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16))
+        }
+
+        function makeSignature(parames) {
+            const magicPrefix = 'GET&%2F&'
+            const magicKeyPostfix = '&'
+
+            const canonicalizedQueryString = Object.keys(parames)
+                .sort()
+                .map(k => percentEncode(k) + '=' + percentEncode(parames[k]))
+                .join('&')
+
+            const data = magicPrefix + percentEncode(canonicalizedQueryString)
+            const key = config.accessKeySecret + magicKeyPostfix
+
+            return crypto.createHmac('sha1', key).update(data).digest('base64')
+        }
+
+        let parames = Object.assign({
+            'Format': 'JSON',
+            'Version': '2015-01-09',
+            'AccessKeyId': config.accessKeyId,
+            'SignatureMethod': 'HMAC-SHA1',
+            'SignatureVersion': '1.0',
+            'SignatureNonce': crypto.randomBytes(16).toString('hex'),
+            'Timestamp': (new Date()).toISOString(),
+        }, specParam)
+
+        return Object.assign(parames, { 'Signature': makeSignature(parames) })
+    }
+
+    // 获取解析记录
     async function getRecord(type) {
         const request = await get(config.alidnsAPI, attachParam({
             'Action': 'DescribeSubDomainRecords',
             'SubDomain': config.rr + '.' + config.domain,
             'Type': type
         }))
+
         try {
             var data = JSON.parse(request)
         } catch (e) {
             throw new Error(`Query record fail. Can't parse server respone.`)
         }
-        if (data.TotalCount === 1) {
-            return data.DomainRecords.Record[0]
-        } else if (data.TotalCount === 0) {
-            return null
-        } else {
+
+        if (data.TotalCount !== 1 && data.TotalCount !== 0) {
             throw new Error(`Query record fail. ${data.Code ? 'Code: ' + data.Code : ''}`)
         }
-    }
-    return {
-        getRecord4: () => getRecord('A'),
-        getRecord6: () => getRecord('AAAA')
-    }
-})()
 
-const { addRecord4, addRecord6, updateRecord4, updateRecord6 } = (function () {
-    async function updateRecord(ip, recordId, type) {
+        return data.TotalCount ? data.DomainRecords.Record[0] : null
+    }
+
+    // 修改（更新、新增）解析记录
+    async function changeRecord(ip, recordId, type) {
         let parame = {
             'RR': config.rr,
             'Value': ip,
@@ -153,18 +171,38 @@ const { addRecord4, addRecord6, updateRecord4, updateRecord6 } = (function () {
         } catch (e) {
             throw new Error(`Update record fail. Can't parse server respone.`)
         }
+
         if (!data.RecordId) {
             throw new Error(`Update record fail. ${data.Code ? 'Code: ' + data.Code : ''}`)
         }
+
         return data
     }
+
     return {
-        addRecord4: (ip) => updateRecord(ip, 0, 'A'),
-        addRecord6: (ip) => updateRecord(ip, 0, 'AAAA'),
-        updateRecord4: (ip, recordId) => updateRecord(ip, recordId, 'A'),
-        updateRecord6: (ip, recordId) => updateRecord(ip, recordId, 'AAAA')
+        /**
+         * 获取域名当前解析记录
+         * @returns 成功则 resolve 解析记录，失败则 reject 错误对象
+         */
+        getRecord4: () => getRecord('A'),
+        getRecord6: () => getRecord('AAAA'),
+        /**
+         * 为域名添加一条解析记录
+         * @param ip 新的 IP 地址
+         * @returns 成功则 resolve 接口的响应数据，失败则 reject 错误对象
+         */
+        addRecord4: (ip) => changeRecord(ip, 0, 'A'),
+        addRecord6: (ip) => changeRecord(ip, 0, 'AAAA'),
+        /**
+         * 更新域名的解析记录
+         * @param ip 新的 IP 地址
+         * @param recordId 旧的解析记录 ID
+         * @returns 成功则 resolve 接口的响应数据，失败则 reject 错误对象
+         */
+        updateRecord4: (ip, recordId) => changeRecord(ip, recordId, 'A'),
+        updateRecord6: (ip, recordId) => changeRecord(ip, recordId, 'AAAA')
     }
-})();
+})()
 
 async function start() {
     let ip4, ip6
