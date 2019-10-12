@@ -2,15 +2,21 @@
 
 const https = require('https')
 const crypto = require('crypto')
+const { URL } = require('url')
 
 const config = {
     rr: 'ddns',
     domain: 'example.com',
+
     accessKeyId: '',
     accessKeySecret: '',
+
+    mode: "both",
     interval: 0,
+
     alidnsAPI: 'https://alidns.aliyuncs.com/',
-    ipAPI: 'https://api.ipify.org/?format=json'
+    ip4Api: 'https://api.ipify.org/?format=json',
+    ip6Api: 'https://api6.ipify.org?format=json'
 }
 
 /**
@@ -47,23 +53,30 @@ function attachParam(specParam) {
         'SignatureNonce':crypto.randomBytes(16).toString('hex'),
         'Timestamp':(new Date()).toISOString(),
     }, specParam)
-    return Object.assign(parames, {'Signature': percentEncode(makeSignature(parames))})
+    return Object.assign(parames, { 'Signature': makeSignature(parames) })
 }
 
 /**
  * A wrap of native https.get
  * 
  * @param {string} url HTTPS GET URL.
- * @param {object} args HTTPS GET args.
+ * @param {object} params HTTPS GET args.
+ * @param {object} options NodeJS request options.
  * @returns {Promise} HTTPS GET promise, resolve data, reject error.
  */
-function get(url, args) {
-    if (args) {
-        url += '?'
-        url += Object.keys(args).map(k => k + '=' + args[k]).join('&')
+function get(url, params = {}, options = {}) {
+    url = new URL(url)
+
+    for (const [k, v] of Object.entries(params)) {
+        url.searchParams.append(k, v)
     }
+    Object.assign(options, {
+        hostname: url.hostname,
+        path: url.pathname + url.search
+    })
+
     return new Promise((resolve, reject) => {
-        https.get(url, (resp) => {
+        https.get(options, (resp) => {
             let data = ''
             resp.on('data', (chunk) => {
                 data += chunk
@@ -77,103 +90,133 @@ function get(url, args) {
     })
 }
 
-/**
- * Get IP from public API
- * 
- * @returns {string} IP Address
- */
-async function getIp() {
-    const request = await get(config.ipAPI)
+const { getIp4, getIp6 } = (function () {
+    async function getIp(family, ipApi, regexp) {
+        const request = await get(ipApi, undefined, { family: family })
 
-    try {
-        const ipv4RegExp = /^\d+\.\d+\.\d+\.\d+$/
-        var data = JSON.parse(request).ip
-        if (typeof(data) !== 'string' || !ipv4RegExp.test(data)) {
-            throw new Error()
+        try {
+            var data = JSON.parse(request).ip
+            if (typeof (data) !== 'string' || !regexp.test(data)) {
+                throw new Error()
+            }
+        } catch (e) {
+            throw new Error(`(Error) Get IP fail. Can't parse server respone.`)
         }
-    } catch(e) {
-        throw new Error(`(Error) Get IP fail. Can't parse server respone.`)
-    }
 
-    return data
-}
-
-/**
- * Get domain A record
- * 
- * @returns {object} domain reocrd
- */
-async function getRecord() {
-    const request = await get(config.alidnsAPI, attachParam({
-        'Action':'DescribeSubDomainRecords',
-        'SubDomain':config.rr + '.' + config.domain,
-        'Type':'A'
-    }))
-    try {
-        var data = JSON.parse(request)
-    } catch(e) {
-        throw new Error(`(Error) Query record fail. Can't parse server respone.`)
+        return data
     }
-    if (data.TotalCount === 1) {
-        return data.DomainRecords.Record[0]
-    } else if (data.TotalCount === 0) {
-        return null
-    } else {
-        throw new Error(`(Error) Query record fail. ${data.Code ? 'Code: ' + data.Code : ''}`)
+    return {
+        getIp4: () => getIp(4, config.ip4Api, /^\d+\.\d+\.\d+\.\d+$/),
+        getIp6: () => getIp(6, config.ip6Api, /(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))/)
     }
-}
+})()
 
-/**
- * Update/Add domain A record. Add record when recordId == 0.
- * 
- * @param {string} ip
- * @param {number} recordId
- * @returns {object} response json
- */
-async function updateRecord(ip, recordId) {
-    if (recordId) {
-        var request = await get(config.alidnsAPI, attachParam({
-            'Action': 'UpdateDomainRecord',
-            'RecordId': recordId,
-            'RR': config.rr,
-            'Type': 'A',
-            'Value': ip
+const { getRecord4, getRecord6 } = (function () {
+    async function getRecord(type) {
+        const request = await get(config.alidnsAPI, attachParam({
+            'Action': 'DescribeSubDomainRecords',
+            'SubDomain': config.rr + '.' + config.domain,
+            'Type': type
         }))
-    } else {
-        var request = await get(config.alidnsAPI, attachParam({
-            'Action': 'AddDomainRecord',
-            'DomainName': config.domain,
+        try {
+            var data = JSON.parse(request)
+        } catch (e) {
+            throw new Error(`(Error) Query record fail. Can't parse server respone.`)
+        }
+        if (data.TotalCount === 1) {
+            return data.DomainRecords.Record[0]
+        } else if (data.TotalCount === 0) {
+            return null
+        } else {
+            throw new Error(`(Error) Query record fail. ${data.Code ? 'Code: ' + data.Code : ''}`)
+        }
+    }
+    return {
+        getRecord4: () => getRecord('A'),
+        getRecord6: () => getRecord('AAAA')
+    }
+})()
+
+const { addRecord4, addRecord6, updateRecord4, updateRecord6 } = (function () {
+    async function updateRecord(ip, recordId, type) {
+        let parame = {
             'RR': config.rr,
-            'Type': 'A',
-            'Value': ip
-        }))
+            'Value': ip,
+            'Type': type,
+            'Action': recordId ? 'UpdateDomainRecord' : 'AddDomainRecord'
+        }
+        Object.assign(parame, recordId ? { 'RecordId': recordId } : { 'DomainName': config.domain })
+
+        let request = await get(config.alidnsAPI, attachParam(parame))
+        try {
+            var data = JSON.parse(request)
+        } catch (e) {
+            throw new Error(`(Error) Update record fail. Can't parse server respone.`)
+        }
+        if (!data.RecordId) {
+            throw new Error(`(Error) Update record fail. ${data.Code ? 'Code: ' + data.Code : ''}`)
+        }
+        return data
     }
-    try {
-        var data = JSON.parse(request)
-    } catch(e) {
-        throw new Error(`(Error) Update record fail. Can't parse server respone.`)
+    return {
+        addRecord4: (ip) => updateRecord(ip, 0, 'A'),
+        addRecord6: (ip) => updateRecord(ip, 0, 'AAAA'),
+        updateRecord4: (ip, recordId) => updateRecord(ip, recordId, 'A'),
+        updateRecord6: (ip, recordId) => updateRecord(ip, recordId, 'AAAA')
     }
-    if (!data.RecordId) {
-        throw new Error(`(Error) Update record fail. ${data.Code ? 'Code: ' + data.Code : ''}`)
-    }
-    return data
-}
+})();
 
 async function start() {
-    try {
-        const ip = await getIp()
-        const record = await getRecord()
-        if (record && record.Value === ip) {
-            console.log(`(No change) ${config.rr}.${config.domain} ${ip}`)
-        } else if (record && record.Value !== ip) {
-            await updateRecord(ip, record.RecordId)
-            console.log(`(Updated) ${config.rr}.${config.domain} ${record.Value} -> ${ip}`)
-        } else {
-            await updateRecord(ip)
-            console.log(`(Added) ${config.rr}.${config.domain} ${ip}`)
+    let ip4, ip6
+
+    if (config.mode === 'both' || config.mode === 'ipv4') {
+        try {
+            ip4 = await getIp4()
+        } catch (e) {
+            console.log(e.message)
         }
-    } catch(e) {
-        console.log(e.message)
+    }
+
+    if (ip4) {
+        try {
+            const record = await getRecord4()
+            if (record && record.Value === ip4) {
+                console.log(`(No change) ${config.rr}.${config.domain} ${ip4}`)
+            } else if (record && record.Value !== ip4) {
+                await updateRecord4(ip4, record.RecordId)
+                console.log(`(Updated) ${config.rr}.${config.domain} ${record.Value} -> ${ip4}`)
+            } else {
+                await addRecord4(ip4)
+                console.log(`(Added) ${config.rr}.${config.domain} ${ip4}`)
+            }
+        } catch (e) {
+            console.log(e.message)
+        }
+    }
+
+    if (config.mode === 'both' || config.mode === 'ipv6') {
+        try {
+            ip6 = await getIp6()
+        } catch (e) {
+            console.log(e.message)
+        }
+    }
+
+    if (ip6) {
+        try {
+            const record = await getRecord6()
+            if (record && record.Value === ip6) {
+                console.log(`(No change) ${config.rr}.${config.domain} ${ip6}`)
+            } else if (record && record.Value !== ip6) {
+                await updateRecord6(ip6, record.RecordId)
+                console.log(`(Updated) ${config.rr}.${config.domain} ${record.Value} -> ${ip6}`)
+            } else {
+                await addRecord6(ip6)
+                console.log(`(Added) ${config.rr}.${config.domain} ${ip6}`)
+            }
+        } catch (e) {
+            console.log(e.message)
+        }
     }
 }
 
