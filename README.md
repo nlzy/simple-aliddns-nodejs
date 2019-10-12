@@ -18,7 +18,7 @@ node >= 8.0
 自动更新 DNS 记录的时间间隔。0 表示不自动更新，运行一次后立即退出。单位：秒，默认：0
 
 - `mode`
-更新 DNS 记录的类型，可选值 'ipv4' 'ipv6' 'both'。'both' 表示同时尝试更新 ipv4 和 ipv6 记录。
+更新 DNS 记录的类型，可选值 `ipv4`、`ipv6`、`both`。`both` 表示同时尝试更新 IPv4 和 IPv6 记录。
 
 - `alidnsAPI & ip4Api & ip6Api`
 脚本用到的几个 API，不用改。
