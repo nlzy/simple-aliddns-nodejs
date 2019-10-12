@@ -85,7 +85,7 @@ function get(url, params = {}, options = {}) {
                 resolve(data)
             })
         }).on('error', (e) => {
-            reject(new Error('(Error) HTTP request error. Code: ' + e.code))
+            reject(new Error('HTTP request error. Code: ' + e.code))
         })
     })
 }
@@ -100,7 +100,7 @@ const { getIp4, getIp6 } = (function () {
                 throw new Error()
             }
         } catch (e) {
-            throw new Error(`(Error) Get IP fail. Can't parse server respone.`)
+            throw new Error(`Get IP fail. Can't parse server respone.`)
         }
 
         return data
@@ -121,14 +121,14 @@ const { getRecord4, getRecord6 } = (function () {
         try {
             var data = JSON.parse(request)
         } catch (e) {
-            throw new Error(`(Error) Query record fail. Can't parse server respone.`)
+            throw new Error(`Query record fail. Can't parse server respone.`)
         }
         if (data.TotalCount === 1) {
             return data.DomainRecords.Record[0]
         } else if (data.TotalCount === 0) {
             return null
         } else {
-            throw new Error(`(Error) Query record fail. ${data.Code ? 'Code: ' + data.Code : ''}`)
+            throw new Error(`Query record fail. ${data.Code ? 'Code: ' + data.Code : ''}`)
         }
     }
     return {
@@ -151,10 +151,10 @@ const { addRecord4, addRecord6, updateRecord4, updateRecord6 } = (function () {
         try {
             var data = JSON.parse(request)
         } catch (e) {
-            throw new Error(`(Error) Update record fail. Can't parse server respone.`)
+            throw new Error(`Update record fail. Can't parse server respone.`)
         }
         if (!data.RecordId) {
-            throw new Error(`(Error) Update record fail. ${data.Code ? 'Code: ' + data.Code : ''}`)
+            throw new Error(`Update record fail. ${data.Code ? 'Code: ' + data.Code : ''}`)
         }
         return data
     }
@@ -173,7 +173,7 @@ async function start() {
         try {
             ip4 = await getIp4()
         } catch (e) {
-            console.log(e.message)
+            console.log(`(Warning) Can't query IPv4 address, skip. Reason: ${e.message}`)
         }
     }
 
@@ -181,16 +181,16 @@ async function start() {
         try {
             const record = await getRecord4()
             if (record && record.Value === ip4) {
-                console.log(`(No change) ${config.rr}.${config.domain} ${ip4}`)
+                console.log(`(No change) (IPv4) ${config.rr}.${config.domain} ${ip4}`)
             } else if (record && record.Value !== ip4) {
                 await updateRecord4(ip4, record.RecordId)
-                console.log(`(Updated) ${config.rr}.${config.domain} ${record.Value} -> ${ip4}`)
+                console.log(`(Updated) (IPv4) ${config.rr}.${config.domain} ${record.Value} -> ${ip4}`)
             } else {
                 await addRecord4(ip4)
-                console.log(`(Added) ${config.rr}.${config.domain} ${ip4}`)
+                console.log(`(Added) (IPv4) ${config.rr}.${config.domain} ${ip4}`)
             }
         } catch (e) {
-            console.log(e.message)
+            console.log(`(Error) ${e.message}`)
         }
     }
 
@@ -198,7 +198,7 @@ async function start() {
         try {
             ip6 = await getIp6()
         } catch (e) {
-            console.log(e.message)
+            console.log(`(Warning) Can't query IPv6 address, skip. Reason: ${e.message}`)
         }
     }
 
@@ -206,16 +206,16 @@ async function start() {
         try {
             const record = await getRecord6()
             if (record && record.Value === ip6) {
-                console.log(`(No change) ${config.rr}.${config.domain} ${ip6}`)
+                console.log(`(No change) (IPv6) ${config.rr}.${config.domain} ${ip6}`)
             } else if (record && record.Value !== ip6) {
                 await updateRecord6(ip6, record.RecordId)
-                console.log(`(Updated) ${config.rr}.${config.domain} ${record.Value} -> ${ip6}`)
+                console.log(`(Updated) (IPv6) ${config.rr}.${config.domain} ${record.Value} -> ${ip6}`)
             } else {
                 await addRecord6(ip6)
-                console.log(`(Added) ${config.rr}.${config.domain} ${ip6}`)
+                console.log(`(Added) (IPv6) ${config.rr}.${config.domain} ${ip6}`)
             }
         } catch (e) {
-            console.log(e.message)
+            console.log(`(Error) ${e.message}`)
         }
     }
 }
