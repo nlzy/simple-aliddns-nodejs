@@ -40,6 +40,9 @@ function get(url, params = {}, options = {}) {
 
     return new Promise((resolve, reject) => {
         https.get(options, (resp) => {
+            if (resp.statusCode !== 200) {
+                reject(new Error('HTTP request error. HTTP status code: ' + resp.statusCode))
+            }
             let data = ''
             resp.on('data', (chunk) => {
                 data += chunk
@@ -73,7 +76,7 @@ const { getIp4, getIp6 } = (function () {
         '((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}',
         '(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])$'
     ].join(''))
-    
+
     async function getIp(family, ipApi, regexp) {
         const request = await get(ipApi, undefined, { family: family })
 
