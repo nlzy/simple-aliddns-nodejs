@@ -39,7 +39,7 @@ function get(url, params = {}, options = {}) {
     })
 
     return new Promise((resolve, reject) => {
-        https.get(options, (resp) => {
+        const req = https.get(options, (resp) => {
             if (resp.statusCode !== 200) {
                 reject(new Error('HTTP request error. HTTP status code: ' + resp.statusCode))
             }
@@ -50,8 +50,12 @@ function get(url, params = {}, options = {}) {
             resp.on('end', () => {
                 resolve(data)
             })
-        }).on('error', (e) => {
+        })
+        req.on('error', (e) => {
             reject(new Error('HTTP request error. Code: ' + e.code))
+        })
+        req.setTimeout(30 * 1000, () => {
+            req.abort()
         })
     })
 }
